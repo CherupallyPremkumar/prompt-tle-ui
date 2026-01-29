@@ -38,16 +38,27 @@ export const PromptCard: React.FC<PromptCardProps> = ({ prompt }) => {
             {/* Content Section */}
             <div className="flex-1 min-w-0">
                 <div className="flex flex-col h-full">
-                    <div>
-                        <Link
-                            to={`/prompts/${prompt.id}`}
-                            className="text-lg font-semibold text-blue-600 hover:text-blue-700 leading-snug block transition-colors"
-                        >
-                            {prompt.title}
-                        </Link>
-                        <p className="mt-2 text-sm text-gray-600 line-clamp-2 leading-relaxed">
-                            {prompt.description}
-                        </p>
+                    <div className="flex gap-4">
+                        {prompt.imageUrl && (
+                            <div className="shrink-0 w-32 h-20 rounded-lg overflow-hidden border border-gray-100 hidden sm:block">
+                                <img
+                                    src={prompt.imageUrl}
+                                    alt=""
+                                    className="w-full h-full object-cover"
+                                />
+                            </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                            <Link
+                                to={`/prompts/${prompt.id}`}
+                                className="text-lg font-semibold text-blue-600 hover:text-blue-700 leading-snug block transition-colors"
+                            >
+                                {prompt.title}
+                            </Link>
+                            <p className="mt-2 text-sm text-gray-600 line-clamp-2 leading-relaxed">
+                                {prompt.description}
+                            </p>
+                        </div>
                     </div>
 
                     <div className="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">

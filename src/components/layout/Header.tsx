@@ -33,12 +33,6 @@ export const Header: React.FC = () => {
                                 Prompts
                             </Link>
                             <Link
-                                to="/tags"
-                                className="text-gray-700 hover:text-gray-900 font-medium transition-colors"
-                            >
-                                Tags
-                            </Link>
-                            <Link
                                 to="/users"
                                 className="text-gray-700 hover:text-gray-900 font-medium transition-colors"
                             >

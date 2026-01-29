@@ -1,30 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { mockDataService } from '../mocks/mockData';
+import { queryService } from '../services/query.service';
 import { User } from '../types';
 import { Input } from '../components/common/Input';
 import { Search, Award, ExternalLink } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 
 export const Users: React.FC = () => {
-    const [users, setUsers] = useState<User[]>([]);
-    const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
 
-    useEffect(() => {
-        loadUsers();
-    }, []);
+    const { data, isLoading: loading } = useQuery({
+        queryKey: ['users', 'all'],
+        queryFn: () => queryService.search<User>('user.searchUsers', {}),
+    });
 
-    const loadUsers = async () => {
-        setLoading(true);
-        try {
-            const allUsers = await mockDataService.getUsers();
-            setUsers(allUsers);
-        } catch (error) {
-            console.error('Error loading users:', error);
-        } finally {
-            setLoading(false);
-        }
-    };
+    const users = data?.list.map(item => item.row) || [];
 
     const filteredUsers = users.filter(user =>
         user.username?.toLowerCase().includes(searchQuery.toLowerCase()) ||

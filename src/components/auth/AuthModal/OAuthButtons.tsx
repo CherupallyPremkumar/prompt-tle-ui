@@ -6,7 +6,10 @@ import { Github } from 'lucide-react';
 export const OAuthButtons: React.FC = () => {
     const handleOAuthLogin = async (provider: string) => {
         try {
+            // Get the direct backend authorization URL from service
             const authUrl = await authService.initiateOAuth(provider);
+
+            // Redirect the entire browser to start the OAuth flow
             window.location.href = authUrl;
         } catch (error) {
             console.error('OAuth error:', error);

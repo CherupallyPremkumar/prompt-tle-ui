@@ -13,10 +13,11 @@ class AuthService {
             // Simulate direct redirect to callback
             return `${window.location.origin}/auth/callback?code=mock_code`;
         }
-        const response = await apiClient.get<ApiResponse<{ authUrl: string }>>(
-            `/api/auth/oauth/${provider}`
-        );
-        return response.data.payload.authUrl;
+
+        // Return direct redirect to backend Spring Security OAuth2 endpoint
+        // Adding the redirect_uri param so backend knows where to return after setting tokens
+        const redirectUri = `${window.location.origin}/auth/callback`;
+        return `${API_CONFIG.BASE_URL}/oauth2/authorization/${provider}?redirect_uri=${encodeURIComponent(redirectUri)}`;
     }
 
     /**

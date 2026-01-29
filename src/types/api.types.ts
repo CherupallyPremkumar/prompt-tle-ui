@@ -1,4 +1,7 @@
 import { Prompt, AllowedAction } from './prompt.types';
+import * as Payloads from './payloads.types';
+
+export { Payloads };
 
 /**
  * API Response wrapper (from your backend)

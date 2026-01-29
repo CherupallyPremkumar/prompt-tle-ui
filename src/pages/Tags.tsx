@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { mockDataService } from '../mocks/mockData';
+import { queryService } from '../services/query.service';
 import { Button } from '../components/common/Button';
 import { Input } from '../components/common/Input';
 import { Search, Hash, ChevronRight } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 
 interface Tag {
     name: string;
@@ -12,25 +13,14 @@ interface Tag {
 }
 
 export const Tags: React.FC = () => {
-    const [tags, setTags] = useState<Tag[]>([]);
-    const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
 
-    useEffect(() => {
-        loadTags();
-    }, []);
+    const { data, isLoading: loading } = useQuery({
+        queryKey: ['tags', 'all'],
+        queryFn: () => queryService.search<Tag>('prompt.getCategoryAll', {}),
+    });
 
-    const loadTags = async () => {
-        setLoading(true);
-        try {
-            const allTags = await mockDataService.getTags();
-            setTags(allTags);
-        } catch (error) {
-            console.error('Error loading tags:', error);
-        } finally {
-            setLoading(false);
-        }
-    };
+    const tags = data?.list.map(item => item.row) || [];
 
     const filteredTags = tags.filter(tag =>
         tag.name.toLowerCase().includes(searchQuery.toLowerCase())

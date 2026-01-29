@@ -13,6 +13,7 @@ export const OAuthCallback: React.FC = () => {
         const code = params.get('code');
         const state = params.get('state');
 
+        // If we have a code (classic OAuth), handle it
         if (code) {
             handleOAuthCallback(code, state || undefined)
                 .then(() => {
@@ -23,6 +24,21 @@ export const OAuthCallback: React.FC = () => {
                     toast.error('Authentication failed');
                     navigate('/');
                 });
+        } else {
+            // Cookie-based flow (backend already set cookies and redirected here)
+            // The useAuth hook's initAuth will automatically pick up the session
+            // but we can force a brief wait or just redirect home
+            const checkSession = async () => {
+                try {
+                    toast.success('Completing login...');
+                    // Brief delay to ensure cookies are processed if needed
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    navigate('/');
+                } catch (err) {
+                    navigate('/');
+                }
+            };
+            checkSession();
         }
     }, [location, handleOAuthCallback, navigate]);
 

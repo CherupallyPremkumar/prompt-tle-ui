@@ -12,9 +12,13 @@ import {
     CheckCircle2,
     Code2,
     ChevronRight,
-    Search
+    Search,
+    X,
+    UploadCloud
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { uploadService } from '../services/upload.service';
+import { useAuth } from '../hooks/auth/useAuth';
 
 const promptSchema = z.object({
     title: z.string().min(15, 'Title must be at least 15 characters').max(200),
@@ -27,6 +31,11 @@ type PromptFormValues = z.infer<typeof promptSchema>;
 
 export const AskPrompt: React.FC = () => {
     const navigate = useNavigate();
+    const { user } = useAuth();
+    const [uploading, setUploading] = React.useState(false);
+    const [previewUrl, setPreviewUrl] = React.useState<string | null>(null);
+    const [selectedFile, setSelectedFile] = React.useState<File | null>(null);
+
     const {
         register,
         handleSubmit,
@@ -35,14 +44,50 @@ export const AskPrompt: React.FC = () => {
         resolver: zodResolver(promptSchema),
     });
 
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            if (file.size > 5 * 1024 * 1024) {
+                toast.error('File size must be less than 5MB');
+                return;
+            }
+            setSelectedFile(file);
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setPreviewUrl(reader.result as string);
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
+    const removeImage = () => {
+        setSelectedFile(null);
+        setPreviewUrl(null);
+    };
+
     const onSubmit = async (data: any) => {
         try {
+            let imageUrl: string | undefined;
+
+            if (selectedFile && user) {
+                setUploading(true);
+                imageUrl = await uploadService.uploadImage(selectedFile, user.id);
+                setUploading(false);
+            }
+
             // Split tags string into array for service
             const tagArray = data.tags.split(',').map((t: string) => t.trim()).filter(Boolean);
-            const payload = { ...data, tags: tagArray };
+            const payload = { ...data, tags: tagArray, imageUrl };
 
             const response = await promptService.createPrompt(payload);
-            toast.success('Prompt published successfully!', {
+
+            // Extract promptId
+            const promptId = response.id || response.mutatedEntity?.id;
+
+            // Automatically submit the prompt to move it out of DRAFT state (Scenario step 2)
+            await promptService.submit(promptId);
+
+            toast.success('Prompt published and submitted successfully!', {
                 icon: '🚀',
                 style: {
                     borderRadius: '16px',
@@ -50,8 +95,6 @@ export const AskPrompt: React.FC = () => {
                     color: '#fff',
                 },
             });
-            // Handle both mock and real API response structures
-            const promptId = response.id || response.mutatedEntity?.id;
             navigate(`/prompts/${promptId}`);
         } catch (error) {
             toast.error('Failed to create prompt. Please check your inputs.', {
@@ -129,6 +172,46 @@ export const AskPrompt: React.FC = () => {
                             </div>
                         </div>
 
+                        {/* Image Upload Section */}
+                        <div className="bg-white border border-gray-100 p-8 rounded-[2rem] shadow-sm hover:shadow-md transition-shadow">
+                            <div className="mb-6">
+                                <label className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-2">
+                                    Thumbnail Image
+                                </label>
+                                <p className="text-sm text-gray-500 leading-relaxed mb-4">
+                                    Add a visual thumbnail for your prompt. Recommended size: 1280x720 (16:9).
+                                </p>
+
+                                <div className="relative">
+                                    {previewUrl ? (
+                                        <div className="relative rounded-2xl overflow-hidden border border-gray-200 group">
+                                            <img src={previewUrl} alt="Preview" className="w-full h-64 object-cover" />
+                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                                <button
+                                                    type="button"
+                                                    onClick={removeImage}
+                                                    className="bg-red-500 text-white p-3 rounded-full hover:bg-red-600 transition-colors shadow-lg"
+                                                >
+                                                    <X className="w-6 h-6" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <label className="flex flex-col items-center justify-center w-full h-64 border-2 border-dashed border-gray-200 rounded-[2rem] cursor-pointer hover:bg-gray-50 hover:border-orange-300 transition-all group">
+                                            <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                                                <div className="p-4 bg-orange-50 rounded-2xl mb-4 group-hover:scale-110 transition-transform">
+                                                    <UploadCloud className="w-8 h-8 text-orange-500" />
+                                                </div>
+                                                <p className="mb-2 text-sm text-gray-700 font-bold">Click to upload thumbnail</p>
+                                                <p className="text-xs text-gray-400">PNG, JPG or WebP (MAX. 5MB)</p>
+                                            </div>
+                                            <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} />
+                                        </label>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
                         {/* Body Section */}
                         <div className="bg-white border border-gray-100 p-8 rounded-[2rem] shadow-sm hover:shadow-md transition-shadow">
                             <div className="mb-6">
@@ -186,7 +269,12 @@ export const AskPrompt: React.FC = () => {
                                 className="w-full sm:w-auto h-16 px-12 text-lg font-black shadow-xl shadow-orange-500/20"
                                 disabled={isSubmitting}
                             >
-                                {isSubmitting ? 'Publishing...' : 'Publish Prompt'}
+                                {isSubmitting || uploading ? (
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                        {uploading ? 'Uploading Image...' : 'Publishing...'}
+                                    </div>
+                                ) : 'Publish Prompt'}
                             </Button>
                             <button
                                 type="button"

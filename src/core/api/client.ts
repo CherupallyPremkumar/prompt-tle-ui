@@ -28,8 +28,9 @@ class ApiClient {
         this.client.interceptors.request.use(
             (config: InternalAxiosRequestConfig) => {
                 const csrfToken = getCookie('csrf_token');
-                if (csrfToken && config.headers) {
-                    config.headers['X-CSRF-Token'] = csrfToken;
+                if (config.headers) {
+                    if (csrfToken) config.headers['X-CSRF-Token'] = csrfToken;
+                    config.headers['x-chenile-tenant-id'] = API_CONFIG.TENANT_ID;
                 }
                 return config;
             },

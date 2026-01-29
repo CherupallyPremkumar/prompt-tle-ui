@@ -16,19 +16,48 @@ import {
     CheckCircle2,
     MessageSquare,
     Flag,
-    Award
+    Award,
+    LucideIcon,
+    Archive,
+    ShieldCheck,
+    Play,
+    ArrowUpCircle,
+    AlertCircle,
+    BookmarkPlus,
+    Ban
 } from 'lucide-react';
 import { Button } from '../components/common/Button';
+import { toast } from 'react-hot-toast';
+import { AllowedAction } from '../types/prompt.types';
+
+const ACTION_CONFIG: Record<string, { label: string; icon: LucideIcon; variant: 'primary' | 'outline' | 'ghost' }> = {
+    submit: { label: 'Submit for Review', icon: ArrowUpCircle, variant: 'primary' },
+    validate: { label: 'Validate', icon: ShieldCheck, variant: 'primary' },
+    open: { label: 'Open', icon: Play, variant: 'primary' },
+    addBounty: { label: 'Add Bounty', icon: Award, variant: 'outline' },
+    rollbackRevision: { label: 'Rollback', icon: History, variant: 'outline' },
+    reopen: { label: 'Reopen', icon: Play, variant: 'outline' },
+    deprecate: { label: 'Deprecate', icon: Ban, variant: 'outline' },
+    flag: { label: 'Flag', icon: Flag, variant: 'outline' },
+    close: { label: 'Close', icon: Archive, variant: 'outline' },
+    removeFavorite: { label: 'Remove Favorite', icon: Bookmark, variant: 'outline' },
+    addFavorite: { label: 'Favorite', icon: BookmarkPlus, variant: 'outline' },
+};
 
 export const PromptDetail: React.FC = () => {
     const { id } = useParams<{ id: string }>();
     const { requireAuth } = useRequireAuth();
     const { upvote, downvote } = useVote(id!);
 
-    const { data: prompt, isLoading, refetch } = useQuery({
+    const [actionPayload, setActionPayload] = React.useState<any>(null);
+
+    const { data: initialPrompt, isLoading } = useQuery({
         queryKey: ['prompt', id],
         queryFn: () => promptService.getPromptById(id!),
     });
+
+    const prompt = actionPayload?.mutatedEntity || initialPrompt;
+    const allowedActions = actionPayload?.allowedActionsAndMetadata || prompt?.allowedActions || [];
 
     if (isLoading) {
         return (
@@ -54,12 +83,33 @@ export const PromptDetail: React.FC = () => {
         </Link>
     </div>;
 
-    const handleFavorite = () => {
-        requireAuth('bookmark', async () => {
-            await promptService.addFavorite(id!);
-            refetch();
+    const handleAction = async (actionId: string) => {
+        requireAuth(actionId, async () => {
+            try {
+                let result;
+                // Complex actions might eventually need modals for payload gathering
+                // For now, we call the direct service method if it exists, otherwise use generic transition
+                const method = (promptService as any)[actionId];
+
+                if (typeof method === 'function') {
+                    // For standard transitions without required complex payload
+                    result = await method(id!);
+                } else {
+                    result = await (promptService as any).transition(id!, actionId);
+                }
+
+                if (result) {
+                    setActionPayload(result);
+                    toast.success(`Action "${actionId}" completed!`);
+                }
+            } catch (error) {
+                console.error(`Action ${actionId} failed:`, error);
+                toast.error(`Action "${actionId}" failed.`);
+            }
         });
     };
+
+    const handleFavorite = () => handleAction(prompt.favoriteCount > 0 ? 'removeFavorite' : 'addFavorite');
 
     return (
         <div className="max-w-5xl mx-auto pb-20">
@@ -67,7 +117,7 @@ export const PromptDetail: React.FC = () => {
             <div className="mb-8 p-6 glass rounded-3xl border border-gray-100 flex flex-col sm:flex-row sm:items-start justify-between gap-6">
                 <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap gap-2 mb-4">
-                        {prompt.tags.map(tag => (
+                        {prompt.tags?.map((tag: string) => (
                             <Link key={tag} to={`/tags/${tag}`} className="text-[10px] font-bold uppercase tracking-widest text-orange-600 bg-orange-50 px-2.5 py-1 rounded-full hover:bg-orange-100 transition-colors">
                                 {tag}
                             </Link>
@@ -87,13 +137,51 @@ export const PromptDetail: React.FC = () => {
                         </div>
                         <div className="flex items-center gap-2">
                             <div className="p-1.5 bg-gray-100 rounded-lg"><Eye className="w-4 h-4 text-gray-500" /></div>
-                            <span>Viewed <span className="text-gray-900">{prompt.viewCount.toLocaleString()} times</span></span>
+                            <span>Viewed <span className="text-gray-900">{prompt.viewCount?.toLocaleString() || 0} times</span></span>
+                        </div>
+                        {prompt.validationScore > 0 && (
+                            <div className="flex items-center gap-2">
+                                <div className="p-1.5 bg-green-50 rounded-lg"><CheckCircle2 className="w-4 h-4 text-green-500" /></div>
+                                <span>Validation Score <span className="text-green-600 font-bold">{prompt.validationScore}</span></span>
+                            </div>
+                        )}
+                        <div className="flex items-center gap-2">
+                            <div className="px-2 py-0.5 bg-gray-900 text-white text-[10px] font-black rounded uppercase tracking-widest leading-none">
+                                {prompt.currentState?.stateId || 'DRAFT'}
+                            </div>
                         </div>
                     </div>
                 </div>
-                <div className="shrink-0 flex gap-2">
-                    <Button variant="outline" className="hidden sm:flex border-gray-200">Share</Button>
-                    <Link to="/ask"><Button className="font-bold">Ask Question</Button></Link>
+                <div className="shrink-0 flex flex-wrap gap-2 max-w-[400px] justify-end">
+                    {allowedActions.length > 0 ? (
+                        allowedActions
+                            .filter((a: AllowedAction) => !['upvote', 'downvote', 'recordImpression', 'viewPrompt'].includes(a.allowedAction))
+                            .map((action: AllowedAction) => {
+                                const config = ACTION_CONFIG[action.allowedAction] || {
+                                    label: action.allowedAction.replace(/([A-Z])/g, ' $1').trim(),
+                                    icon: AlertCircle,
+                                    variant: 'outline'
+                                };
+                                const Icon = config.icon;
+                                return (
+                                    <Button
+                                        key={action.allowedAction}
+                                        variant={config.variant}
+                                        size="sm"
+                                        onClick={() => handleAction(action.allowedAction)}
+                                        className="font-bold text-[11px] uppercase tracking-wider flex items-center gap-2 shadow-sm"
+                                    >
+                                        <Icon className="w-3.5 h-3.5" />
+                                        {config.label}
+                                    </Button>
+                                );
+                            })
+                    ) : (
+                        <>
+                            <Button variant="outline" className="hidden sm:flex border-gray-200">Share</Button>
+                            <Link to="/ask"><Button className="font-bold">Ask Question</Button></Link>
+                        </>
+                    )}
                 </div>
             </div>
 
@@ -121,15 +209,19 @@ export const PromptDetail: React.FC = () => {
                     <div className="flex md:flex-col items-center gap-5">
                         <button
                             onClick={handleFavorite}
-                            className="p-3 text-gray-400 hover:text-yellow-500 hover:bg-yellow-50 rounded-xl transition-all"
-                            title="Save to favorites"
+                            className={`p-3 rounded-xl transition-all ${prompt.favoriteCount > 0 ? 'text-yellow-500 bg-yellow-50' : 'text-gray-400 hover:text-yellow-500 hover:bg-yellow-50'}`}
+                            title={prompt.favoriteCount > 0 ? "Remove from favorites" : "Save to favorites"}
                         >
                             <Bookmark className="w-6 h-6" />
                         </button>
                         <button className="p-3 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-xl transition-all" title="Share link">
                             <Share2 className="w-6 h-6" />
                         </button>
-                        <button className="p-3 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all" title="Report for moderation">
+                        <button
+                            onClick={() => handleAction('flag')}
+                            className="p-3 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                            title="Report for moderation"
+                        >
                             <Flag className="w-5 h-5" />
                         </button>
                     </div>
@@ -154,7 +246,15 @@ export const PromptDetail: React.FC = () => {
                                         </div>
                                         <span className="ml-2 text-xs font-bold text-gray-500 uppercase tracking-widest">PROMPT_SOURCE.md</span>
                                     </div>
-                                    <button className="text-[11px] font-bold text-gray-500 hover:text-white transition-colors bg-white/5 px-2 py-1 rounded">COPY</button>
+                                    <button
+                                        onClick={() => {
+                                            navigator.clipboard.writeText(prompt.body || '');
+                                            toast.success('Copied to clipboard!');
+                                        }}
+                                        className="text-[11px] font-bold text-gray-500 hover:text-white transition-colors bg-white/5 px-2 py-1 rounded"
+                                    >
+                                        COPY
+                                    </button>
                                 </div>
                                 <pre className="p-6 sm:p-8 !m-0 overflow-x-auto text-sm leading-relaxed text-blue-100 font-mono scrollbar-none">
                                     <code>{prompt.body}</code>
@@ -203,7 +303,7 @@ export const PromptDetail: React.FC = () => {
 
                         {prompt.answers && prompt.answers.length > 0 ? (
                             <div className="space-y-8">
-                                {prompt.answers.map((answer) => (
+                                {prompt.answers.map((answer: any) => (
                                     <div key={answer.id} className="group glass p-8 rounded-[2rem] border-gray-100 hover:border-orange-200 transition-all duration-300">
                                         <div className="flex gap-6">
                                             <div className="flex flex-col items-center gap-2 shrink-0">

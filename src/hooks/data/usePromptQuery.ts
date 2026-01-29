@@ -1,17 +1,18 @@
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 import { queryService } from '../../services/query.service';
-import type { SearchResponse, PromptSearchFilters } from '../../types/query.types';
+import type { SearchResponse, PromptSearchFilters, SortCriterion } from '../../types/query.types';
 import type { Prompt } from '../../types/prompt.types';
 
 export const usePromptQuery = (
     filters: PromptSearchFilters,
     page: number = 1,
     pageSize: number = 20,
+    sortCriteria?: SortCriterion[],
     options?: Omit<UseQueryOptions<SearchResponse<Prompt>>, 'queryKey' | 'queryFn'>
 ) => {
     return useQuery<SearchResponse<Prompt>>({
-        queryKey: ['prompts', 'search', filters, page, pageSize],
-        queryFn: () => queryService.searchPrompts(filters, page, pageSize),
+        queryKey: ['prompts', 'search', filters, page, pageSize, sortCriteria],
+        queryFn: () => queryService.searchPrompts(filters, page, pageSize, sortCriteria),
         ...options,
     });
 };
