@@ -1,14 +1,34 @@
-import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
+import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig, AxiosRequestConfig } from 'axios';
 import { API_CONFIG } from '../../config/api.config';
 import { getCookie } from '../../utils/cookies';
+import { useAuthStore } from '../../store/auth.store';
+
+interface RetryConfig {
+    retries?: number;
+    retryDelay?: number;
+    retryCondition?: (error: AxiosError) => boolean;
+}
+
+interface RequestConfig extends AxiosRequestConfig {
+    retry?: RetryConfig;
+    timeout?: number;
+}
 
 class ApiClient {
     private client: AxiosInstance;
     private isRefreshing = false;
     private refreshQueue: Array<{
-        resolve: (value?: any) => void;
-        reject: (reason?: any) => void;
+        resolve: (value?: unknown) => void;
+        reject: (reason?: unknown) => void;
     }> = [];
+    private readonly DEFAULT_RETRY_CONFIG: RetryConfig = {
+        retries: 3,
+        retryDelay: 1000,
+        retryCondition: (error: AxiosError) => {
+            // Retry on network errors or 5xx server errors
+            return !error.response || (error.response.status >= 500 && error.response.status < 600);
+        }
+    };
 
     constructor() {
         this.client = axios.create({
@@ -21,6 +41,11 @@ class ApiClient {
         });
 
         this.setupInterceptors();
+
+        // Setup mock interceptors if mocking is enabled
+        if (API_CONFIG.USE_MOCKS) {
+            this.setupMockInterceptors();
+        }
     }
 
     private setupInterceptors() {
@@ -45,7 +70,8 @@ class ApiClient {
 
                 if (
                     error.response?.status === 401 &&
-                    // @ts-ignore
+                    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                    // @ts-expect-error
                     error.response?.data?.code === 'TOKEN_EXPIRED' &&
                     originalRequest &&
                     !originalRequest._retry
@@ -62,14 +88,15 @@ class ApiClient {
                     this.isRefreshing = true;
 
                     try {
-                        await this.client.post('/api/auth/refresh');
+                        await this.client.post('/api/auth/refresh-token');
                         this.refreshQueue.forEach((promise) => promise.resolve());
                         this.refreshQueue = [];
                         return this.client(originalRequest);
                     } catch (refreshError) {
                         this.refreshQueue.forEach((promise) => promise.reject(refreshError));
                         this.refreshQueue = [];
-                        window.dispatchEvent(new CustomEvent('auth:logout'));
+                        // Use proper state management instead of DOM events
+                        useAuthStore.getState().logout();
                         return Promise.reject(refreshError);
                     } finally {
                         this.isRefreshing = false;
@@ -81,24 +108,161 @@ class ApiClient {
         );
     }
 
-    get<T = any>(url: string, config = {}) {
-        return this.client.get<T>(url, config);
+    /**
+     * Retry logic with exponential backoff
+     */
+    private async retryRequest<T>(
+        requestFn: () => Promise<T>,
+        retryConfig: RetryConfig,
+        attempt = 0
+    ): Promise<T> {
+        try {
+            return await requestFn();
+        } catch (error) {
+            const axiosError = error as AxiosError;
+            const shouldRetry = retryConfig.retryCondition?.(axiosError) ?? false;
+            const maxRetries = retryConfig.retries ?? 0;
+
+            if (shouldRetry && attempt < maxRetries) {
+                // Exponential backoff: delay * (2 ^ attempt)
+                const delay = (retryConfig.retryDelay ?? 1000) * Math.pow(2, attempt);
+                await new Promise(resolve => setTimeout(resolve, delay));
+                return this.retryRequest(requestFn, retryConfig, attempt + 1);
+            }
+
+            throw error;
+        }
     }
 
-    post<T = any>(url: string, data?: any, config = {}) {
-        return this.client.post<T>(url, data, config);
+    get<T>(url: string, config: RequestConfig = {}) {
+        const { retry, ...axiosConfig } = config;
+        const retryConfig = { ...this.DEFAULT_RETRY_CONFIG, ...retry };
+
+        return this.retryRequest(
+            () => this.client.get<T>(url, axiosConfig),
+            retryConfig
+        );
     }
 
-    put<T = any>(url: string, data?: any, config = {}) {
-        return this.client.put<T>(url, data, config);
+    post<T>(url: string, data?: unknown, config: RequestConfig = {}) {
+        const { retry, ...axiosConfig } = config;
+        const retryConfig = { ...this.DEFAULT_RETRY_CONFIG, ...retry };
+
+        return this.retryRequest(
+            () => this.client.post<T>(url, data, axiosConfig),
+            retryConfig
+        );
     }
 
-    delete<T = any>(url: string, config = {}) {
-        return this.client.delete<T>(url, config);
+    put<T>(url: string, data?: unknown, config: RequestConfig = {}) {
+        const { retry, ...axiosConfig } = config;
+        const retryConfig = { ...this.DEFAULT_RETRY_CONFIG, ...retry };
+
+        return this.retryRequest(
+            () => this.client.put<T>(url, data, axiosConfig),
+            retryConfig
+        );
     }
 
-    patch<T = any>(url: string, data?: any, config = {}) {
-        return this.client.patch<T>(url, data, config);
+    delete<T>(url: string, config: RequestConfig = {}) {
+        const { retry, ...axiosConfig } = config;
+        const retryConfig = { ...this.DEFAULT_RETRY_CONFIG, ...retry };
+
+        return this.retryRequest(
+            () => this.client.delete<T>(url, axiosConfig),
+            retryConfig
+        );
+    }
+
+    patch<T>(url: string, data?: unknown, config: RequestConfig = {}) {
+        const { retry, ...axiosConfig } = config;
+        const retryConfig = { ...this.DEFAULT_RETRY_CONFIG, ...retry };
+
+        return this.retryRequest(
+            () => this.client.patch<T>(url, data, axiosConfig),
+            retryConfig
+        );
+    }
+
+    /**
+     * Setup mock API interceptors for development/testing
+     */
+    private setupMockInterceptors() {
+        // Store for mock OTP codes (email -> code)
+        const otpStore = new Map<string, string>();
+
+        this.client.interceptors.request.use((config) => {
+            // Mock OTP send endpoint
+            if (config.url === '/api/auth/otp/send' && config.method === 'post') {
+                const email = (config.data as any)?.email;
+                if (email) {
+                    // Generate a mock 6-digit OTP
+                    const mockOtp = '123456'; // In real scenario, this would be random
+                    otpStore.set(email, mockOtp);
+                    console.log(`[MOCK] OTP sent to ${email}: ${mockOtp}`);
+
+                    // Return mock success response
+                    return Promise.reject({
+                        config,
+                        response: {
+                            status: 200,
+                            data: { success: true },
+                            headers: {},
+                            config
+                        },
+                        isAxiosError: true
+                    });
+                }
+            }
+
+            // Mock OTP verify endpoint
+            if (config.url === '/api/auth/otp/verify' && config.method === 'post') {
+                const { email, code } = (config.data as any) || {};
+                const storedOtp = otpStore.get(email);
+
+                if (code === storedOtp) {
+                    console.log(`[MOCK] OTP verified for ${email}`);
+                    // Return mock user data
+                    return Promise.reject({
+                        config,
+                        response: {
+                            status: 200,
+                            data: {
+                                payload: {
+                                    id: 'mock-user-id',
+                                    email,
+                                    username: email.split('@')[0],
+                                    fullName: email.split('@')[0],
+                                    provider: 'email',
+                                    status: 'ACTIVE',
+                                    isActive: true,
+                                    emailVerified: true,
+                                    createdAt: new Date().toISOString(),
+                                    roles: [{ id: 'user', name: 'User', description: null, acls: [] }]
+                                }
+                            },
+                            headers: {},
+                            config
+                        },
+                        isAxiosError: true
+                    });
+                } else {
+                    console.log(`[MOCK] Invalid OTP for ${email}`);
+                    return Promise.reject({
+                        config,
+                        response: {
+                            status: 400,
+                            data: { description: 'Invalid or expired OTP' },
+                            headers: {},
+                            config
+                        },
+                        isAxiosError: true
+                    });
+                }
+            }
+
+            return config;
+        });
     }
 }
 

@@ -5,9 +5,19 @@ export const getCookie = (name: string): string | null => {
     return null;
 };
 
-export const setCookie = (name: string, value: string, days = 7) => {
+export const setCookie = (
+    name: string,
+    value: string,
+    options: {
+        days?: number;
+        secure?: boolean;
+        sameSite?: 'Strict' | 'Lax' | 'None';
+    } = {}
+) => {
+    const { days = 7, secure = window.location.protocol === 'https:', sameSite = 'Lax' } = options;
     const expires = new Date(Date.now() + days * 864e5).toUTCString();
-    document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Lax`;
+    const secureFlag = secure ? '; Secure' : '';
+    document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=${sameSite}${secureFlag}`;
 };
 
 export const removeCookie = (name: string) => {

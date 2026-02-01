@@ -1,5 +1,5 @@
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
-import { queryService } from '../../services/query.service';
+import { queryService } from '../../services/chenile-query.service';
 import type { SearchResponse, PromptSearchFilters, SortCriterion } from '../../types/query.types';
 import type { Prompt } from '../../types/prompt.types';
 

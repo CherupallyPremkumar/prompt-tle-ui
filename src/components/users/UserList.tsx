@@ -2,7 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { ExternalLink } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { queryService } from '../../services/query.service';
+import { queryService } from '../../services/chenile-query.service';
 import type { User } from '../../types';
 
 export const UserList: React.FC = () => {

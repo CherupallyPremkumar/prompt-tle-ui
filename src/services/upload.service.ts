@@ -1,6 +1,7 @@
 import { apiClient } from '../core/api/client';
 import axios from 'axios';
 import { API_CONFIG } from '../config/api.config';
+import { logger } from '@/utils/logger';
 
 interface PresignedUrlResponse {
     uploadId: string;
@@ -37,7 +38,7 @@ class UploadService {
 
             return fileUrl;
         } catch (error) {
-            console.error('Upload flow failed:', error);
+            logger.error('Upload flow failed', error);
             throw error;
         }
     }

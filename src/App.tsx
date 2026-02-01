@@ -1,18 +1,23 @@
 import { Routes, Route } from 'react-router-dom';
-import { Layout } from './components/layout/Layout';
-import { Home } from './pages/Home';
-import { PromptDetail } from './pages/PromptDetail';
-import { AskPrompt } from './pages/AskPrompt';
-import { Tags } from './pages/Tags';
-import { Users } from './pages/Users';
-import { Profile } from './pages/Profile';
-import { OAuthCallback } from './components/auth/OAuthCallback';
+import { Layout } from './components/layout/Layout/Layout';
+import { PromptDetail } from '@/pages/promptdetail/index';
+import { AskPrompt } from '@/pages/askprompt/index';
+import { Tags } from './pages/tags';
+import { Users } from './pages/users';
+import { Profile } from '@/pages/profile/index';
+import { OAuthCallback } from './pages/auth/OAuthCallback';
+import { Home } from "@/pages/home/index";
+import { ErrorBoundary } from './components/common/ErrorBoundary';
 
 function App() {
     return (
         <Routes>
             <Route path="/" element={<Layout />}>
-                <Route index element={<Home />} />
+                <Route index element={
+                    <ErrorBoundary>
+                        <Home />
+                    </ErrorBoundary>
+                } />
                 <Route path="prompts" element={<Home />} />
                 <Route path="prompts/:id" element={<PromptDetail />} />
                 <Route path="ask" element={<AskPrompt />} />
